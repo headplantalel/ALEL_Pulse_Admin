@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALEL Pulse — Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  body { background:#f1f5f9; }
+  .tab-btn.active { background:#0f766e; color:#fff; }
+  td, th { padding: 6px 8px; font-size: 12px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+  th { background:#f8fafc; text-align:left; font-weight:700; color:#334155; position:sticky; top:0; }
+  .modal-back { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal-card { background:#fff; border-radius:12px; padding:18px; width:min(560px, 94vw); max-height:88vh; overflow:auto; }
+  input, select { border:1px solid #cbd5e1; border-radius:6px; padding:5px 8px; font-size:12px; }
+  .btn { padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+  .btn-pri { background:#0f766e; color:#fff; }
+  .btn-sec { background:#e2e8f0; color:#334155; }
+  .btn-red { background:#dc2626; color:#fff; }
+  .badge { padding:1px 7px; border-radius:99px; font-size:10px; font-weight:700; }
+  .toast { position:fixed; bottom:16px; right:16px; background:#0f172a; color:#fff; padding:8px 14px; border-radius:8px; font-size:12px; z-index:99; }
+</style>
+</head>
+<body class="min-h-screen">
+<div id="login-view" class="min-h-screen flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <div class="text-center mb-6">
+      <div class="text-2xl font-black text-teal-800">ALEL Pulse</div>
+      <div class="text-sm text-slate-500 font-semibold">Admin Console</div>
+    </div>
+    <div class="space-y-3">
+      <input id="login-email" type="email" placeholder="Email" class="w-full py-2.5">
+      <input id="login-pass" type="password" placeholder="Password" class="w-full py-2.5">
+      <button id="login-btn" class="btn btn-pri w-full py-2.5 text-sm">Sign in</button>
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400"><span class="flex-1 h-px bg-slate-200"></span>or<span class="flex-1 h-px bg-slate-200"></span></div>
+      <button id="login-google" class="btn btn-sec w-full py-2.5 text-sm flex items-center justify-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Sign in with Google
+      </button>
+      <p id="login-err" class="text-red-600 text-xs font-semibold"></p>
+    </div>
+  </div>
+</div>
+
+<div id="app-view" class="hidden">
+  <header class="bg-white shadow-sm sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
+      <div class="font-black text-teal-800 mr-2">ALEL Pulse <span class="text-slate-400 font-bold text-sm">Admin</span></div>
+      <button class="tab-btn active btn-sec btn" data-tab="dash">Dashboard</button>
+      <button class="tab-btn btn-sec btn" data-tab="users">Users</button>
+      <button class="tab-btn btn-sec btn" data-tab="master">Master Data</button>
+      <button class="tab-btn btn-sec btn" data-tab="data">Production / Quality</button>
+      <button class="tab-btn btn-sec btn" data-tab="audit">Audit Log</button>
+      <div class="ml-auto flex items-center gap-2">
+        <span id="whoami" class="text-xs font-semibold text-slate-500"></span>
+        <button id="logout-btn" class="btn btn-sec">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-4">
+    <!-- DASHBOARD -->
+    <section id="tab-dash" class="tab-pane">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div class="bg-white rounded-xl p-3 shadow-sm"><div class="text-[11px] font-bold text-slate-400 uppercase">Prod today</div><div id="stat-prod" class="text-2xl font-black text-teal-800">—</div></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><div class="text-[11px] font-bold text-slate-400 uppercase">Defects today</div><div id="stat-def" class="text-2xl font-black text-red-600">—</div></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><div class="text-[11px] font-bold text-slate-400 uppercase">Active users</div><div id="stat-users" class="text-2xl font-black">—</div></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><div class="text-[11px] font-bold text-slate-400 uppercase">Active items</div><div id="stat-items" class="text-2xl font-black">—</div></div>
+        <div class="bg-white rounded-xl p-3 shadow-sm"><div class="text-[11px] font-bold text-slate-400 uppercase">Prod rows</div><div id="stat-rows" class="text-2xl font-black">—</div></div>
+      </div>
+      <div class="bg-white rounded-xl p-3 shadow-sm">
+        <h3 class="font-black text-slate-700 mb-2 text-sm">Recent activity</h3>
+        <div class="overflow-auto max-h-96"><table id="dash-audit" class="w-full"></table></div>
+      </div>
+    </section>
+
+    <!-- USERS -->
+    <section id="tab-users" class="tab-pane hidden">
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 flex gap-2 flex-wrap items-center">
+        <input id="user-search" placeholder="Search email/name" class="w-56">
+        <button id="user-add-btn" class="btn btn-pri">+ Add user</button>
+        <span class="text-[11px] text-slate-400 font-semibold">Admins can manage operators/managers/quality. Only the Super Admin manages admins.</span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[70vh]">
+        <table class="w-full" id="users-table"></table>
+      </div>
+    </section>
+
+    <!-- MASTER -->
+    <section id="tab-master" class="tab-pane hidden">
+      <div class="flex gap-2 mb-3 flex-wrap">
+        <button class="m-sub btn btn-sec" data-m="lines">Lines</button>
+        <button class="m-sub btn btn-sec" data-m="items">Items</button>
+        <button class="m-sub btn btn-sec" data-m="defect_types">Defect Types</button>
+        <button class="m-sub btn btn-sec" data-m="time_slots">Time Slots</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 flex gap-2 flex-wrap items-center">
+        <button id="m-add" class="btn btn-pri">+ Add</button>
+        <button id="m-export" class="btn btn-sec">⬇ Export XLSX</button>
+        <button id="m-template" class="btn btn-sec">Template</button>
+        <label class="btn btn-sec cursor-pointer">⬆ Import XLSX/CSV<input id="m-import" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label>
+        <span id="m-status" class="text-[11px] font-semibold text-slate-500"></span>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[62vh]">
+        <table class="w-full" id="master-table"></table>
+      </div>
+    </section>
+
+    <!-- DATA -->
+    <section id="tab-data" class="tab-pane hidden">
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3 grid grid-cols-2 md:grid-cols-8 gap-2 items-end">
+        <div><label class="text-[10px] font-bold text-slate-500 block">Dataset</label>
+          <select id="d-set" class="w-full"><option value="production_entries">Production</option><option value="defects">Defects</option></select></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">From</label><input id="d-from" type="date" class="w-full"></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">To</label><input id="d-to" type="date" class="w-full"></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">Line</label><select id="d-line" class="w-full"><option value="">All</option></select></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">Item</label><select id="d-item" class="w-full"><option value="">All</option></select></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">Status</label>
+          <select id="d-status" class="w-full"><option value="active">Active</option><option value="trash">Trash</option><option value="both">Both</option></select></div>
+        <div><label class="text-[10px] font-bold text-slate-500 block">Limit</label><select id="d-limit" class="w-full"><option>100</option><option selected>500</option><option>1000</option></select></div>
+        <div><button id="d-load" class="btn btn-pri w-full">Load</button></div>
+      </div>
+      <div id="d-batch-bar" class="bg-amber-50 border border-amber-200 rounded-xl p-2 mb-3 hidden flex-wrap gap-2 items-center text-[12px] font-semibold">
+        <span id="d-sel-count">0 selected</span>
+        <input id="d-batch-qty" type="number" placeholder="qty value" class="w-28">
+        <button class="btn btn-sec" onclick="batchOp('set')">Set qty</button>
+        <button class="btn btn-sec" onclick="batchOp('pct')">±% (sign + qty)</button>
+        <input id="d-batch-date" type="date" class="w-36">
+        <button class="btn btn-sec" onclick="batchOp('date')">Move date</button>
+        <select id="d-batch-line" class="w-36"><option value="">— line —</option></select>
+        <button class="btn btn-sec" onclick="batchOp('line')">Move line</button>
+        <select id="d-batch-item" class="w-40"><option value="">— item —</option></select>
+        <button class="btn btn-sec" onclick="batchOp('item')">Move item</button>
+        <select id="d-batch-slot" class="w-36"><option value="">— slot —</option></select>
+        <button class="btn btn-sec" onclick="batchOp('slot')">Move slot</button>
+        <button class="btn btn-red" onclick="batchOp('trash')">Trash</button>
+        <button class="btn btn-sec" onclick="batchOp('restore')">Restore</button>
+        <button id="d-hard-del" class="btn btn-red hidden" onclick="batchOp('hard')">Permanent delete</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[60vh]">
+        <table class="w-full" id="data-table"></table>
+      </div>
+    </section>
+
+    <!-- AUDIT -->
+    <section id="tab-audit" class="tab-pane hidden">
+      <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[75vh]">
+        <table class="w-full" id="audit-table"></table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script>
+const SUPABASE_URL = "https://bskfvdgqzberzcdqmiku.supabase.co";
+const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJza2Z2ZGdxemJlcnpjZHFtaWt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNTQxNzUsImV4cCI6MjEwNzYzMDE3NX0.bjHLDs6NV5-clu2HIL-tmDDV6nBnt_fi0Q17PUY0Yhc";
+const sb = supabase.createClient(SUPABASE_URL, ANON);
+
+let ME = null; // {id, email, role}
+let state = { m: 'lines', mRows: [], sel: new Set(), dRows: [], lines: [], items: [], slots: [] };
+const $ = id => document.getElementById(id);
+const toast = m => { const d = document.createElement('div'); d.className = 'toast'; d.textContent = m; $('toast-root').appendChild(d); setTimeout(() => d.remove(), 3500); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---------- AUTH ----------
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) { await enter(session.user); }
+}
+async function enter(user) {
+  const { data } = await sb.from('users').select('id,email,name,role').eq('id', user.id).maybeSingle();
+  if (!data) { $('login-err').textContent = 'No profile row — ask the super admin.'; return; }
+  ME = data;
+  if (!['super_admin','admin'].includes(ME.role)) { $('login-err').textContent = 'Access denied — admins only.'; return; }
+  $('login-view').classList.add('hidden');
+  $('app-view').classList.remove('hidden');
+  $('whoami').textContent = ME.email + ' · ' + ME.role;
+  if (ME.role !== 'super_admin') $('d-hard-del').classList.add('hidden'); else $('d-hard-del').classList.remove('hidden');
+  await loadCommon();
+  showTab('dash');
+}
+$('login-btn').onclick = async () => {
+  $('login-err').textContent = '';
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('login-email').value.trim(), password: $('login-pass').value });
+  if (error) { $('login-err').textContent = error.message; return; }
+  await enter(data.user);
+};
+$('login-google').onclick = async () => {
+  $('login-err').textContent = '';
+  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
+  if (error) $('login-err').textContent = error.message;
+};
+$('logout-btn').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+async function loadCommon() {
+  const [l, i, s] = await Promise.all([
+    sb.from('lines').select('id,name').order('name'),
+    sb.from('items').select('id,code,name').order('name'),
+    sb.from('time_slots').select('label').order('sort_order'),
+  ]);
+  state.lines = l.data || []; state.items = i.data || []; state.slots = (s.data || []).map(x => x.label);
+  for (const selId of ['d-line', 'd-batch-line']) {
+    $(selId).innerHTML = '<option value="">All / —</option>' + state.lines.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  }
+  for (const selId of ['d-item', 'd-batch-item']) {
+    $(selId).innerHTML = '<option value="">All / —</option>' + state.items.map(x => `<option value="${x.id}">[${esc(x.code)}] ${esc(x.name)}</option>`).join('');
+  }
+  $('d-batch-slot').innerHTML = '<option value="">— slot —</option>' + state.slots.map(x => `<option>${esc(x)}</option>`).join('');
+}
+
+// ---------- TABS ----------
+document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
+  $('tab-' + t).classList.remove('hidden');
+  if (t === 'dash') renderDash();
+  if (t === 'users') renderUsers();
+  if (t === 'master') renderMaster();
+  if (t === 'audit') renderAudit();
+  if (t === 'data' && !state.dRows.length) loadData();
+}
+
+// ---------- DASHBOARD ----------
+async function renderDash() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [p, d, u, i, r, a] = await Promise.all([
+    sb.from('production_entries').select('id', { count: 'exact', head: true }).eq('entry_date', today).is('deleted_at', null),
+    sb.from('defects').select('id', { count: 'exact', head: true }).eq('entry_date', today).is('deleted_at', null),
+    sb.from('users').select('id', { count: 'exact', head: true }).eq('active', true),
+    sb.from('items').select('id', { count: 'exact', head: true }).eq('active', true),
+    sb.from('production_entries').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+    sb.from('audit_log').select('actor_email,action,entity,entity_id,created_at').order('created_at', { ascending: false }).limit(15),
+  ]);
+  $('stat-prod').textContent = p.count ?? 0; $('stat-def').textContent = d.count ?? 0;
+  $('stat-users').textContent = u.count ?? 0; $('stat-items').textContent = i.count ?? 0; $('stat-rows').textContent = r.count ?? 0;
+  $('dash-audit').innerHTML = '<tr><th>When</th><th>Who</th><th>Action</th><th>Entity</th></tr>' +
+    (a.data || []).map(x => `<tr><td>${new Date(x.created_at).toLocaleString()}</td><td>${esc(x.actor_email)}</td><td>${esc(x.action)}</td><td>${esc(x.entity)}#${esc(x.entity_id)}</td></tr>`).join('');
+}
+
+// ---------- USERS ----------
+async function renderUsers() {
+  const q = ($('user-search').value || '').toLowerCase();
+  const { data } = await sb.from('user_status').select('*').order('email');
+  const rows = (data || []).filter(u => !q || u.email.toLowerCase().includes(q) || (u.name || '').toLowerCase().includes(q));
+  const roles = ['super_admin', 'admin', 'manager', 'quality', 'operator'];
+  const roleBadge = r => ({ super_admin: 'bg-purple-100 text-purple-700', admin: 'bg-teal-100 text-teal-800', manager: 'bg-blue-100 text-blue-700', quality: 'bg-amber-100 text-amber-700', operator: 'bg-slate-200 text-slate-600' }[r] || 'bg-slate-100');
+  $('users-table').innerHTML = '<tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th>Entries 7d</th><th>Actions</th></tr>' +
+    rows.map(u => `<tr>
+      <td class="font-semibold">${esc(u.name || '—')}</td>
+      <td>${esc(u.email)}</td>
+      <td><select onchange="changeRole('${esc(u.email)}', this.value)" ${u.role === 'super_admin' ? 'disabled' : ''}>
+        ${roles.map(r => `<option ${r === u.role ? 'selected' : ''} ${r === 'super_admin' ? 'disabled' : ''}>${r}</option>`).join('')}
+      </select></td>
+      <td><span class="badge ${u.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${u.active ? 'active' : 'inactive'}</span></td>
+      <td>${u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'never'}</td>
+      <td class="text-center">${u.entries_7d ?? 0}</td>
+      <td><button class="btn btn-sec" onclick="toggleActive('${esc(u.email)}', ${!u.active})" ${u.role === 'super_admin' ? 'disabled' : ''}>${u.active ? 'Deactivate' : 'Activate'}</button></td>
+    </tr>`).join('');
+}
+async function changeRole(email, role) {
+  const { data, error } = await sb.rpc('set_user_role', { p_email: email, p_role: role });
+  if (error) toast('⚠ ' + error.message); else { toast('Role updated'); renderUsers(); }
+}
+async function toggleActive(email, active) {
+  const { data, error } = await sb.rpc('set_user_active', { p_email: email, p_active: active });
+  if (error) toast('⚠ ' + error.message); else { toast(active ? 'Activated' : 'Deactivated'); renderUsers(); }
+}
+$('user-add-btn').onclick = () => modal(`
+  <h3 class="font-black mb-3">Add user</h3>
+  <label class="text-[11px] font-bold block">Email</label><input id="mu-email" class="w-full mb-2">
+  <label class="text-[11px] font-bold block">Name</label><input id="mu-name" class="w-full mb-2">
+  <label class="text-[11px] font-bold block">Role</label>
+  <select id="mu-role" class="w-full mb-3"><option>operator</option><option>quality</option><option>manager</option>${ME.role === 'super_admin' ? '<option>admin</option>' : ''}</select>
+  <div class="flex gap-2 justify-end"><button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" id="mu-save">Save</button></div>
+  <p class="text-[10px] text-slate-400 mt-2">The person will be allowed to sign in (their first Google/email sign-in auto-activates them with this role).</p>
+`, async () => {
+  const email = $('mu-email').value.trim(), name = $('mu-name').value.trim(), role = $('mu-role').value;
+  if (!email) return toast('Email required');
+  const { error } = await sb.from('allowed_emails').upsert({ email, name, role, added_by: ME.id });
+  if (error) return toast('⚠ ' + error.message);
+  const { error: e2 } = await sb.from('users').update({ role, active: true, name }).eq('email', email).select();
+  if (e2 && e2.code !== 'PGRST116') toast('Saved to allowlist (' + e2.message + ')');
+  toast('User added'); closeModal(); renderUsers();
+});
+
+// ---------- MASTER ----------
+document.querySelectorAll('.m-sub').forEach(b => b.onclick = () => { state.m = b.dataset.m; document.querySelectorAll('.m-sub').forEach(x => x.classList.toggle('active', x === b)); renderMaster(); });
+async function renderMaster() {
+  const { data } = await sb.from(state.m).select('*').order('name', { ascending: true });
+  state.mRows = data || [];
+  const cols = { lines: ['name', 'section', 'active'], items: ['code', 'name', 'pg', 'target_productivity', 'target_qty', 'unit', 'active'], defect_types: ['name', 'category', 'active'], time_slots: ['label', 'sort_order', 'active'] }[state.m];
+  $('master-table').innerHTML = '<tr>' + cols.map(c => `<th>${c.replace(/_/g, ' ')}</th>`).join('') + '<th>Actions</th></tr>' +
+    state.mRows.map(r => `<tr>${cols.map(c => `<td>${esc(r[c])}</td>`).join('')}
+      <td><button class="btn btn-sec" onclick="editMaster('${r.id}')">Edit</button></td></tr>`).join('');
+  $('m-status').textContent = state.mRows.length + ' rows';
+}
+$('m-add').onclick = () => masterForm({});
+async function editMaster(id) { masterForm(state.mRows.find(r => r.id === id)); }
+function masterForm(r) {
+  const cols = { lines: ['name', 'section'], items: ['code', 'name', 'pg', 'target_productivity', 'target_qty', 'unit'], defect_types: ['name', 'category'], time_slots: ['label', 'sort_order'] }[state.m];
+  modal(`<h3 class="font-black mb-3">${r.id ? 'Edit' : 'Add'} ${state.m.replace(/_/g, ' ')}</h3>` +
+    cols.map(c => `<label class="text-[11px] font-bold block">${c.replace(/_/g, ' ')}</label><input id="mf-${c}" value="${esc(r[c] ?? '')}" class="w-full mb-2">`).join('') +
+    `<label class="flex items-center gap-2 text-[11px] font-bold mb-3"><input type="checkbox" id="mf-active" ${r.active !== false ? 'checked' : ''}> active</label>
+     <div class="flex gap-2 justify-end"><button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" id="mf-save">Save</button></div>`,
+  async () => {
+    const row = { active: $('mf-active').checked };
+    cols.forEach(c => { const v = $('mf-' + c).value; row[c] = (c === 'sort_order' || c === 'target_productivity' || c === 'target_qty') && v !== '' ? +v : v; });
+    const { error } = r.id ? await sb.from(state.m).update(row).eq('id', r.id) : await sb.from(state.m).insert(row);
+    if (error) return toast('⚠ ' + error.message);
+    toast('Saved'); closeModal(); renderMaster();
+  });
+}
+$('m-export').onclick = () => {
+  const ws = XLSX.utils.json_to_sheet(state.mRows.map(r => { const { id, created_at, updated_at, ...rest } = r; return rest; }));
+  XLSX.writeFile(XLSX.utils.book_new(ws), state.m + '.xlsx');
+};
+$('m-template').onclick = () => {
+  const cols = { lines: ['name', 'section', 'active'], items: ['code', 'name', 'pg', 'target_productivity', 'target_qty', 'unit', 'active'], defect_types: ['name', 'category', 'active'], time_slots: ['label', 'sort_order', 'active'] }[state.m];
+  const ws = XLSX.utils.aoa_to_sheet([cols]);
+  XLSX.writeFile(XLSX.utils.book_new(ws), state.m + '-template.xlsx');
+};
+$('m-import').onchange = async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  const wb = XLSX.read(await f.arrayBuffer());
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+  if (!rows.length) return toast('No rows in file');
+  modal(`<h3 class="font-black mb-2">Import preview</h3><p class="text-[11px] font-semibold text-slate-500 mb-2">${rows.length} rows will be upserted into ${state.m}. Existing rows match by ${state.m === 'lines' ? 'name' : state.m === 'items' ? 'code' : state.m === 'defect_types' ? 'name' : 'label'}.</p>
+    <div class="flex gap-2 justify-end"><button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" id="mi-go">Import ${rows.length} rows</button></div>`,
+  async () => {
+    const key = state.m === 'items' ? 'code' : state.m === 'time_slots' ? 'label' : 'name';
+    let ok = 0, fail = 0;
+    for (const r of rows) {
+      const row = {};
+      for (const k of Object.keys(r)) row[k] = r[k];
+      row.active = String(row.active).toLowerCase() === 'false' ? false : true;
+      const { error } = await sb.from(state.m).upsert(row, { onConflict: key, ignoreDuplicates: false });
+      if (error) fail++; else ok++;
+    }
+    toast(`Imported: ${ok} ok, ${fail} failed`); closeModal(); renderMaster();
+  });
+  ev.target.value = '';
+};
+
+// ---------- DATA ----------
+$('d-load').onclick = loadData;
+async function loadData() {
+  const set = $('d-set').value, from = $('d-from').value, to = $('d-to').value, limit = +$('d-limit').value;
+  let q = sb.from(set).select('*', { count: 'exact' }).order('entry_date', { ascending: false }).limit(limit);
+  if (from) q = q.gte('entry_date', from);
+  if (to) q = q.lte('entry_date', to);
+  if ($('d-line').value) q = q.eq('line_id', $('d-line').value);
+  if ($('d-item').value) q = q.eq('item_id', $('d-item').value);
+  const st = $('d-status').value;
+  if (st === 'active') q = q.is('deleted_at', null);
+  else if (st === 'trash') q = q.not('deleted_at', 'is', null);
+  const { data, count, error } = await q;
+  if (error) return toast('⚠ ' + error.message);
+  state.dRows = data || []; state.sel.clear();
+  renderDataTable();
+  toast(count + ' rows (' + state.dRows.length + ' shown)');
+}
+function renderDataTable() {
+  const isProd = $('d-set').value === 'production_entries';
+  const ln = x => state.lines.find(l => l.id === x)?.name || '—';
+  const it = x => { const i = state.items.find(i => i.id === x); return i ? `[${i.code}] ${i.name}` : '—'; };
+  const cols = isProd
+    ? ['entry_date', 'line', 'item', 'time_slot', 'qty', 'mp', 'productivity', 'target_productivity', 'operating_minutes', 'remarks']
+    : ['entry_date', 'item', 'time_slot', 'qty', 'remarks'];
+  $('data-table').innerHTML = '<tr><th></th>' + cols.map(c => `<th>${c.replace(/_/g, ' ')}</th>`).join('') + '<th></th></tr>' +
+    state.dRows.map(r => {
+      const vals = isProd ? [r.entry_date, ln(r.line_id), it(r.item_id), r.time_slot, r.qty, r.mp, r.productivity, r.target_productivity, r.operating_minutes, r.remarks]
+                          : [r.entry_date, it(r.item_id), r.time_slot, r.qty, r.remarks];
+      const trashed = !!r.deleted_at;
+      return `<tr class="${trashed ? 'opacity-50' : ''}"><td><input type="checkbox" onchange="sel('${r.id}', this.checked)"></td>
+        ${vals.map(v => `<td>${esc(v)}</td>`).join('')}
+        <td><button class="btn btn-sec" onclick="editRow('${r.id}')">Edit</button></td></tr>`;
+    }).join('');
+  $('d-sel-count').textContent = state.sel.size + ' selected';
+  $('d-batch-bar').classList.toggle('hidden', !state.sel.size);
+}
+function sel(id, on) { on ? state.sel.add(id) : state.sel.delete(id); renderDataTable(); }
+function editRow(id) {
+  const r = state.dRows.find(x => x.id === id); if (!r) return;
+  const isProd = $('d-set').value === 'production_entries';
+  const fields = isProd ? ['entry_date', 'time_slot', 'qty', 'mp', 'productivity', 'target_productivity', 'operating_minutes', 'remarks']
+                        : ['entry_date', 'time_slot', 'qty', 'remarks'];
+  modal(`<h3 class="font-black mb-3">Edit row</h3>` +
+    fields.map(f => `<label class="text-[11px] font-bold block">${f.replace(/_/g, ' ')}</label><input id="er-${f}" value="${esc(r[f] ?? '')}" class="w-full mb-2">`).join('') +
+    `<div class="flex gap-2 justify-end"><button class="btn btn-sec" onclick="closeModal()">Cancel</button><button class="btn btn-pri" id="er-save">Save</button></div>`,
+  async () => {
+    const row = {};
+    fields.forEach(f => { const v = $('er-' + f).value; row[f] = ['qty', 'mp', 'productivity', 'target_productivity', 'operating_minutes'].includes(f) ? +v : v; });
+    row.updated_by = ME.id;
+    const { error } = await sb.from($('d-set').value).update(row).eq('id', id);
+    if (error) return toast('⚠ ' + error.message);
+    toast('Saved'); closeModal(); loadData();
+  });
+}
+async function batchOp(op) {
+  const ids = [...state.sel]; if (!ids.length) return;
+  const set = $('d-set').value, updates = {};
+  if (op === 'set' && $('d-batch-qty').value !== '') updates.qty = +$('d-batch-qty').value;
+  if (op === 'pct' && $('d-batch-qty').value !== '') {
+    const pct = +$('d-batch-qty').value;
+    for (const r of state.dRows.filter(x => state.sel.has(x.id))) {
+      const nq = Math.max(0, Math.round(r.qty * (1 + pct / 100)));
+      const { error } = await sb.from(set).update({ qty: nq, updated_by: ME.id }).eq('id', r.id);
+      if (error) return toast('⚠ ' + error.message);
+    }
+    toast('Batch qty updated'); state.sel.clear(); loadData(); return;
+  }
+  if (op === 'date' && $('d-batch-date').value) updates.entry_date = $('d-batch-date').value;
+  if (op === 'line' && $('d-batch-line').value) updates.line_id = $('d-batch-line').value;
+  if (op === 'item' && $('d-batch-item').value) updates.item_id = $('d-batch-item').value;
+  if (op === 'slot' && $('d-batch-slot').value) updates.time_slot = $('d-batch-slot').value;
+  if (op === 'trash') updates.deleted_at = new Date().toISOString();
+  if (op === 'restore') updates.deleted_at = null;
+  if (op === 'hard') { const { error } = await sb.from(set).delete().in('id', ids); if (error) return toast('⚠ ' + error.message); toast('Permanently deleted'); state.sel.clear(); loadData(); return; }
+  if (Object.keys(updates).length) {
+    updates.updated_by = ME.id;
+    const { error } = await sb.from(set).update(updates).in('id', ids);
+    if (error) return toast('⚠ ' + error.message);
+  }
+  toast('Batch applied'); state.sel.clear(); loadData();
+}
+
+// ---------- AUDIT ----------
+async function renderAudit() {
+  const { data } = await sb.from('audit_log').select('*').order('created_at', { ascending: false }).limit(300);
+  $('audit-table').innerHTML = '<tr><th>When</th><th>Who</th><th>Action</th><th>Entity</th><th>Before</th><th>After</th></tr>' +
+    (data || []).map(r => `<tr><td>${new Date(r.created_at).toLocaleString()}</td><td>${esc(r.actor_email)}</td><td class="font-semibold">${esc(r.action)}</td><td>${esc(r.entity)}#${esc(r.entity_id)}</td>
+      <td class="text-[10px] max-w-64 truncate">${esc(JSON.stringify(r.before))}</td><td class="text-[10px] max-w-64 truncate">${esc(JSON.stringify(r.after))}</td></tr>`).join('');
+}
+
+// ---------- MODAL ----------
+let closeModal = () => {};
+function modal(html, onSave) {
+  $('modal-root').innerHTML = `<div class="modal-back"><div class="modal-card">${html}</div></div>`;
+  closeModal = () => $('modal-root').innerHTML = '';
+  const b = document.getElementById('mf-save') || document.getElementById('mu-save') || document.getElementById('mi-go') || document.getElementById('er-save');
+  if (b) b.onclick = onSave;
+}
+
+boot();
+</script>
+</body>
+</html>
