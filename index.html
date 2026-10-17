@@ -47,6 +47,7 @@
       <div class="font-black text-teal-800 mr-2">ALEL Pulse <span class="text-slate-400 font-bold text-sm">Admin</span></div>
       <button class="tab-btn active btn-sec btn" data-tab="dash">Dashboard</button>
       <button class="tab-btn btn-sec btn" data-tab="users">Users</button>
+      <button class="tab-btn btn-sec btn" data-tab="requests">Requests <span id="req-badge" class="hidden bg-red-500 text-white text-[9px] font-black rounded-full px-1.5 py-0.5 ml-1">0</span></button>
       <button class="tab-btn btn-sec btn" data-tab="master">Master Data</button>
       <button class="tab-btn btn-sec btn" data-tab="data">Production / Quality</button>
       <button class="tab-btn btn-sec btn" data-tab="audit">Audit Log</button>
@@ -82,6 +83,17 @@
       </div>
       <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[70vh]">
         <table class="w-full" id="users-table"></table>
+      </div>
+    </section>
+
+    <!-- REQUESTS -->
+    <section id="tab-requests" class="tab-pane hidden">
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-3">
+        <h3 class="font-black text-slate-700 text-sm">Access requests</h3>
+        <p class="text-[11px] text-slate-400 font-semibold">People who signed in but are not on the allowlist. Approve to let them in (pick their role) or reject.</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-auto max-h-[70vh]">
+        <table class="w-full" id="requests-table"></table>
       </div>
     </section>
 
@@ -177,7 +189,7 @@ async function enter(user) {
   $('login-view').classList.add('hidden');
   $('app-view').classList.remove('hidden');
   $('whoami').textContent = ME.email + ' · ' + ME.role;
-  if (ME.role !== 'super_admin') $('d-hard-del').classList.add('hidden'); else $('d-hard-del').classList.remove('hidden');
+  if (ME.role !== "super_admin") $("d-hard-del").classList.add("hidden"); else $("d-hard-del").classList.remove("hidden"); refreshReqBadge();
   await loadCommon();
   showTab('dash');
 }
@@ -212,9 +224,43 @@ function showTab(t) {
   $('tab-' + t).classList.remove('hidden');
   if (t === 'dash') renderDash();
   if (t === 'users') renderUsers();
+  if (t === 'requests') renderRequests();
   if (t === 'master') renderMaster();
   if (t === 'audit') renderAudit();
   if (t === 'data' && !state.dRows.length) loadData();
+}
+
+// ---------- ACCESS REQUESTS ----------
+async function refreshReqBadge() {
+  const { count } = await sb.from('access_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+  const badge = $('req-badge');
+  badge.textContent = count ?? 0;
+  badge.classList.toggle('hidden', !(count > 0));
+}
+async function renderRequests() {
+  const { data } = await sb.from('access_requests').select('*').order('created_at', { ascending: false }).limit(100);
+  const roles = ['super_admin', 'admin', 'manager', 'quality', 'operator'];
+  $('requests-table').innerHTML = '<tr><th>When</th><th>Name</th><th>Email</th><th>Requested</th><th>Note</th><th>Status</th><th>Decision</th></tr>' +
+    (data || []).map(r => `<tr>
+      <td>${new Date(r.created_at).toLocaleString()}</td>
+      <td class="font-semibold">${esc(r.name || '—')}</td>
+      <td>${esc(r.email)}</td>
+      <td>${esc(r.requested_role)}</td>
+      <td>${esc(r.note || '')}</td>
+      <td><span class="badge ${r.status === 'pending' ? 'bg-amber-100 text-amber-700' : r.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${r.status}</span></td>
+      <td>${r.status === 'pending' ? `
+        <select id="req-role-${r.id}" class="mr-1">${roles.filter(x => x !== 'super_admin').map(x => `<option ${x === r.requested_role ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        <button class="btn btn-pri" onclick="decideReq('${r.id}', true)">Approve</button>
+        <button class="btn btn-red" onclick="decideReq('${r.id}', false)">Reject</button>`
+      : `${r.decided_at ? new Date(r.decided_at).toLocaleDateString() : ''}`}</td>
+    </tr>`).join('');
+}
+async function decideReq(id, approve) {
+  const role = approve ? ($('req-role-' + id) ? $('req-role-' + id).value : 'operator') : 'operator';
+  const { error } = await sb.rpc('decide_request', { p_req: id, p_approve: approve, p_role: role });
+  if (error) return toast('⚠ ' + error.message);
+  toast(approve ? 'Approved — user can sign in now' : 'Rejected');
+  renderRequests(); refreshReqBadge(); renderUsers();
 }
 
 // ---------- DASHBOARD ----------
